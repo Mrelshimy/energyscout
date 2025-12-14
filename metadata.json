@@ -1,0 +1,5 @@
+{
+  "name": "EnergyScout",
+  "description": "An intelligent web agent that tracks the latest news, regulations, and technological updates in electricity metering and generates email-ready newsletters.",
+  "requestFramePermissions": []
+}
