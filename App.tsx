@@ -4,10 +4,9 @@ import { SearchControls } from './components/SearchControls';
 import { ResultsFeed } from './components/ResultsFeed';
 import { EmailModal } from './components/EmailModal';
 import { DailyAutomation } from './components/DailyAutomation';
-import { UserProfileSetup } from './components/UserProfileSetup';
 import { searchEnergyNews, generateEmailNewsletter } from './services/geminiService';
-import { NewsReport, AppStatus, EmailDraft, DailyConfig, UserProfile } from './types';
-import { AlertCircle, Loader2, UserCircle } from 'lucide-react';
+import { NewsReport, AppStatus, EmailDraft, DailyConfig } from './types';
+import { AlertCircle, Loader2, UserCircle, Send, MessageCircle, Mail, AlertTriangle, Zap } from 'lucide-react';
 
 const App: React.FC = () => {
   const [status, setStatus] = useState<AppStatus>(AppStatus.IDLE);
@@ -17,54 +16,34 @@ const App: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [dailyConfig, setDailyConfig] = useState<DailyConfig | null>(null);
   
-  // User Profile State
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
-  const [isProfileSetupOpen, setIsProfileSetupOpen] = useState(false);
-
-  // Track if we are currently running an automation sequence
+  // Automation State
   const [isAutoRunning, setIsAutoRunning] = useState(false);
+  const [pendingAutoActions, setPendingAutoActions] = useState<DailyConfig['activeChannels'] | null>(null);
+  
   // Ref to prevent double-firing in strict mode or rapid updates
   const isProcessingRef = useRef(false);
 
-  // Load config and profile from local storage on mount
+  // Request Notification Permissions on mount
   useEffect(() => {
-    // Load Profile
-    const savedProfile = localStorage.getItem('energyScout_userProfile');
-    if (savedProfile) {
-      try {
-        setUserProfile(JSON.parse(savedProfile));
-      } catch (e) {
-        console.error("Failed to parse user profile", e);
-        setIsProfileSetupOpen(true);
-      }
-    } else {
-      // No profile, force setup
-      setIsProfileSetupOpen(true);
+    if ("Notification" in window && Notification.permission !== "granted") {
+      Notification.requestPermission();
     }
+  }, []);
 
+  // Load config from local storage on mount
+  useEffect(() => {
     // Load Automation Config
     const savedConfig = localStorage.getItem('energyScout_dailyConfig');
     if (savedConfig) {
       try {
         const config = JSON.parse(savedConfig) as DailyConfig;
-        // Migration check for older config structure
-        if (!config.activeChannels) {
-           config.activeChannels = ['EMAIL'];
-        }
+        if (!config.activeChannels) config.activeChannels = ['EMAIL'];
         setDailyConfig(config);
       } catch (e) {
         console.error("Failed to parse daily config", e);
       }
     }
   }, []);
-
-  const handleProfileSave = (profile: UserProfile) => {
-    localStorage.setItem('energyScout_userProfile', JSON.stringify(profile));
-    setUserProfile(profile);
-    setIsProfileSetupOpen(false);
-    // Refresh page to ensure services pick up new key if needed
-    window.location.reload(); 
-  };
 
   // SCHEDULER: Check time every 30 seconds
   useEffect(() => {
@@ -74,8 +53,6 @@ const App: React.FC = () => {
       if (isProcessingRef.current || status === AppStatus.SEARCHING) return;
 
       const now = new Date();
-      
-      // Check if already run today
       if (dailyConfig.lastRun) {
         const last = new Date(dailyConfig.lastRun);
         if (last.getDate() === now.getDate() && last.getMonth() === now.getMonth()) {
@@ -83,12 +60,10 @@ const App: React.FC = () => {
         }
       }
 
-      // Check time
       const [targetHour, targetMinute] = dailyConfig.scheduledTime.split(':').map(Number);
       const currentHour = now.getHours();
       const currentMinute = now.getMinutes();
 
-      // Trigger if current time is equal to or past target time
       if (currentHour > targetHour || (currentHour === targetHour && currentMinute >= targetMinute)) {
         console.log("Scheduler: Triggering daily scan...");
         isProcessingRef.current = true;
@@ -97,7 +72,7 @@ const App: React.FC = () => {
       }
     };
 
-    const timer = setInterval(checkSchedule, 30000); // Check every 30s
+    const timer = setInterval(checkSchedule, 30000); 
     return () => clearInterval(timer);
   }, [dailyConfig, status]);
 
@@ -110,15 +85,17 @@ const App: React.FC = () => {
     if (dailyConfig) {
       const updatedConfig = { ...dailyConfig, lastRun: new Date().toISOString() };
       saveDailyConfig(updatedConfig);
-      setIsAutoRunning(false);
-      isProcessingRef.current = false;
     }
+    // Clean up
+    setIsAutoRunning(false);
+    isProcessingRef.current = false;
   };
 
   const handleSearch = async (query: string, isAutomated = false) => {
     setStatus(AppStatus.SEARCHING);
     setErrorMsg(null);
     setReport(null);
+    setPendingAutoActions(null);
     
     try {
       const result = await searchEnergyNews(query);
@@ -130,27 +107,36 @@ const App: React.FC = () => {
       setReport(newReport);
       setStatus(AppStatus.COMPLETE);
 
-      // Automated Execution
       if (isAutomated && dailyConfig) {
-         // Execute all active channels
+         // Notify user via System Notification
+         if (Notification.permission === 'granted') {
+           new Notification('EnergyScout Report Ready', { 
+             body: `Latest updates on ${dailyConfig.topic} are available. Click to send.`,
+             icon: '/favicon.ico'
+           });
+         }
+
+         // Try to execute immediately
          const channels = dailyConfig.activeChannels || [];
-         
+         let blocked = false;
+
          if (channels.includes('WHATSAPP')) {
-             setTimeout(() => {
-               triggerWhatsAppShare(newReport, dailyConfig.phoneNumber);
-             }, 1000);
+             const success = triggerWhatsAppShare(newReport, dailyConfig.phoneNumber);
+             if (!success) blocked = true;
          }
          
          if (channels.includes('EMAIL')) {
-           // If Email is active, we trigger drafting. 
-           // Note: browser might only allow opening one window (for WA or Email), 
-           // but we try our best.
-            triggerEmailDrafting(newReport.rawText, true);
+            // For automation, we just open the modal and try to fire mailto
+            triggerEmailDrafting(newReport.rawText, true).then((success) => {
+               if (!success) setPendingAutoActions(channels);
+            });
+         } else if (blocked) {
+             // If WhatsApp blocked and no email, show pending actions
+             setPendingAutoActions(channels);
          }
          
          updateLastRun();
       } else {
-        // Reset manual processing flag if manual search finishes
         isProcessingRef.current = false;
       }
 
@@ -163,7 +149,8 @@ const App: React.FC = () => {
     }
   };
 
-  const triggerWhatsAppShare = (reportData: NewsReport, phone: string) => {
+  // Returns true if opened, false if blocked
+  const triggerWhatsAppShare = (reportData: NewsReport, phone: string): boolean => {
     const cleanNumber = phone ? phone.replace(/[^0-9]/g, '') : '';
     const sourceList = reportData.sources.map(s => `• ${s.title}: ${s.uri}`).join('\n');
     const message = `*EnergyScout Update - Sources:*\n\n${sourceList}`;
@@ -172,14 +159,12 @@ const App: React.FC = () => {
       ? `https://wa.me/${cleanNumber}?text=${encodedMessage}`
       : `https://wa.me/?text=${encodedMessage}`;
       
-    // Attempt to open. Note: Browsers might block this if not user-initiated.
     const win = window.open(url, '_blank');
-    if (!win) {
-      console.warn("Auto-open blocked by browser.");
-    }
+    return !!win;
   };
 
-  const triggerEmailDrafting = async (text: string, isAutomated = false) => {
+  // Returns true if opened, false if blocked
+  const triggerEmailDrafting = async (text: string, isAutomated = false): Promise<boolean> => {
     setStatus(AppStatus.DRAFTING_EMAIL);
     try {
       const draft = await generateEmailNewsletter(text);
@@ -191,38 +176,62 @@ const App: React.FC = () => {
         const subject = encodeURIComponent(draft.subject);
         const body = encodeURIComponent(draft.body);
         const recipient = dailyConfig?.emailAddress ? dailyConfig.emailAddress : '';
-        window.location.href = `mailto:${recipient}?subject=${subject}&body=${body}`;
+        const win = window.open(`mailto:${recipient}?subject=${subject}&body=${body}`, '_blank');
+        return !!win;
       }
+      return true;
     } catch (err: any) {
       console.error(err);
       setErrorMsg("Failed to generate email draft.");
       setStatus(AppStatus.ERROR);
-      setIsAutoRunning(false);
-      isProcessingRef.current = false;
+      return false;
     }
+  };
+
+  const handlePendingActions = () => {
+    if (!dailyConfig || !report || !pendingAutoActions) return;
+    
+    if (pendingAutoActions.includes('WHATSAPP')) {
+      triggerWhatsAppShare(report, dailyConfig.phoneNumber);
+    }
+    if (pendingAutoActions.includes('EMAIL')) {
+      triggerEmailDrafting(report.rawText, true);
+    }
+    setPendingAutoActions(null);
   };
 
   return (
     <Layout>
-      {/* Profile Button / Header Action (optional, but good for UX) */}
       <div className="absolute top-4 right-4 z-50">
         <button 
-          onClick={() => setIsProfileSetupOpen(true)}
-          className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors"
+          className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors cursor-default"
         >
           <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center border border-slate-700">
              <UserCircle className="h-5 w-5" />
           </div>
-          <span className="text-sm font-medium hidden sm:inline">{userProfile?.name || 'Guest'}</span>
+          <span className="text-sm font-medium hidden sm:inline">Guest</span>
         </button>
       </div>
 
-      {isProfileSetupOpen && (
-        <UserProfileSetup 
-          onComplete={handleProfileSave} 
-          existingProfile={userProfile}
-          onCancel={userProfile ? () => setIsProfileSetupOpen(false) : undefined}
-        />
+      {/* Action Banner for Blocked Popups */}
+      {pendingAutoActions && !isAutoRunning && (
+        <div className="mb-6 bg-energy-900/40 border border-energy-500/50 rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 animate-bounce-in shadow-[0_0_20px_rgba(34,197,94,0.15)]">
+          <div className="flex items-center gap-3">
+             <div className="p-2 bg-energy-500 rounded-full text-white">
+                <AlertTriangle className="h-5 w-5" />
+             </div>
+             <div>
+               <h3 className="font-bold text-white">Daily Report Ready</h3>
+               <p className="text-sm text-slate-300">Browser blocked automatic opening. Click to send.</p>
+             </div>
+          </div>
+          <button 
+            onClick={handlePendingActions}
+            className="whitespace-nowrap flex items-center gap-2 px-5 py-2.5 bg-energy-600 hover:bg-energy-500 text-white rounded-lg font-bold shadow-lg transition-transform hover:scale-105"
+          >
+            <Send className="h-4 w-4" /> Send Updates
+          </button>
+        </div>
       )}
 
       <DailyAutomation 
@@ -242,7 +251,7 @@ const App: React.FC = () => {
       )}
 
       {isAutoRunning && status === AppStatus.SEARCHING && (
-        <div className="fixed inset-0 z-50 bg-black/80 flex flex-col items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-black/80 flex flex-col items-center justify-center p-4 backdrop-blur-sm">
            <Loader2 className="h-12 w-12 text-energy-500 animate-spin mb-4" />
            <h3 className="text-xl font-bold text-white">Auto-Pilot Active</h3>
            <p className="text-slate-400">Scanning for "{dailyConfig?.topic}"...</p>
@@ -262,9 +271,7 @@ const App: React.FC = () => {
       {!report && status !== AppStatus.SEARCHING && !errorMsg && (
         <div className="text-center py-20 text-slate-600">
           <div className="w-16 h-16 bg-slate-900 rounded-full mx-auto mb-4 flex items-center justify-center">
-            <svg className="w-8 h-8 text-slate-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
-            </svg>
+            <Zap className="w-8 h-8 text-slate-700" />
           </div>
           <p>Ready to scout for energy metering updates.</p>
         </div>

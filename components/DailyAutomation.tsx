@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, Play, CheckCircle, Clock, Save, Bell, Zap, Mail, MessageCircle, Send } from 'lucide-react';
+import { Settings, Play, CheckCircle, Clock, Save, Bell, Zap, Mail, MessageCircle, Send, AlertTriangle } from 'lucide-react';
 import { DailyConfig } from '../types';
 
 interface DailyAutomationProps {
@@ -22,14 +22,12 @@ export const DailyAutomation: React.FC<DailyAutomationProps> = ({
   const [autoRun, setAutoRun] = useState(config?.autoRun || false);
   const [scheduledTime, setScheduledTime] = useState(config?.scheduledTime || '09:00');
   
-  // Initialize active channels. Default to Email if nothing set.
   const [activeChannels, setActiveChannels] = useState<('WHATSAPP' | 'EMAIL')[]>(
     config?.activeChannels || ['EMAIL']
   );
   
   const [nextRunText, setNextRunText] = useState('');
 
-  // Update countdown text
   useEffect(() => {
     if (!config?.autoRun || !config?.scheduledTime) {
       setNextRunText('');
@@ -47,7 +45,6 @@ export const DailyAutomation: React.FC<DailyAutomationProps> = ({
       target.setHours(hours, minutes, 0, 0);
       
       if (target <= now) {
-        // Target is tomorrow
         target.setDate(target.getDate() + 1);
       }
       
@@ -64,6 +61,10 @@ export const DailyAutomation: React.FC<DailyAutomationProps> = ({
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
+    if (activeChannels.length === 0 && autoRun) {
+      alert("Please select at least one notification channel (WhatsApp or Email) for automation.");
+      return;
+    }
     onSaveConfig({
       topic,
       phoneNumber: phone,
@@ -80,7 +81,6 @@ export const DailyAutomation: React.FC<DailyAutomationProps> = ({
     if (!config?.lastRun) return true;
     const last = new Date(config.lastRun);
     const now = new Date();
-    // Reset "Done" status if it's a new day
     return last.getDate() !== now.getDate() || last.getMonth() !== now.getMonth();
   };
 
@@ -92,7 +92,6 @@ export const DailyAutomation: React.FC<DailyAutomationProps> = ({
     }
   };
 
-  // Test Functions
   const testWhatsApp = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -104,12 +103,15 @@ export const DailyAutomation: React.FC<DailyAutomationProps> = ({
     
     const cleanNumber = phone.replace(/[^0-9]/g, '');
     if (cleanNumber.length < 5) {
-      alert("Please enter a valid phone number with country code.");
+      alert("Please enter a valid phone number with country code (e.g., 2010xxxxxxxx).");
       return;
     }
 
     const url = `https://wa.me/${cleanNumber}?text=${encodeURIComponent("Test message from EnergyScout. Configuration working!")}`;
-    window.open(url, '_blank');
+    const win = window.open(url, '_blank');
+    if (!win) {
+      alert("Pop-up blocked! Please allow pop-ups for this site to use WhatsApp automation.");
+    }
   };
 
   const testEmail = (e: React.MouseEvent) => {
@@ -117,17 +119,15 @@ export const DailyAutomation: React.FC<DailyAutomationProps> = ({
     e.stopPropagation();
 
     if (!email && activeChannels.includes('EMAIL')) {
-        const confirmEmpty = window.confirm("You haven't entered an email address. This will open your default mail client with a blank recipient. Continue?");
-        if (!confirmEmpty) return;
+        if (!window.confirm("No email address entered. Test with blank recipient?")) return;
     }
 
     const subject = encodeURIComponent("EnergyScout Configuration Test");
     const body = encodeURIComponent("If you are reading this, your email configuration link is working properly.");
     const mailto = email ? `mailto:${email}?subject=${subject}&body=${body}` : `mailto:?subject=${subject}&body=${body}`;
     
-    // Use window.open for mailto to avoid navigating away from the app state if possible, 
-    // though mailto usually behaves well.
-    window.location.href = mailto;
+    // Using window.open for test to ensure it works similar to automation
+    window.open(mailto, '_blank');
   };
 
   if (isEditing) {
@@ -139,7 +139,6 @@ export const DailyAutomation: React.FC<DailyAutomationProps> = ({
         </div>
         <form onSubmit={handleSave} className="space-y-6">
           
-          {/* Topic Section */}
           <div>
             <label className="block text-sm text-slate-400 mb-1">Daily Search Topic</label>
             <input
@@ -153,7 +152,6 @@ export const DailyAutomation: React.FC<DailyAutomationProps> = ({
             />
           </div>
           
-          {/* Notification Channels Section */}
           <div className="bg-slate-950 rounded-xl p-4 border border-slate-800 space-y-4">
             <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">Notification Channels</h3>
             
@@ -161,14 +159,13 @@ export const DailyAutomation: React.FC<DailyAutomationProps> = ({
             <div className="space-y-2">
                <div className="flex items-center justify-between">
                  <div className="flex items-center gap-2">
-                   <input 
-                      type="checkbox" 
-                      id="use-wa"
-                      checked={activeChannels.includes('WHATSAPP')}
-                      onChange={() => toggleChannel('WHATSAPP')}
-                      className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-energy-600 focus:ring-energy-500 cursor-pointer"
-                   />
-                   <label htmlFor="use-wa" className="flex items-center gap-2 text-sm text-white cursor-pointer select-none">
+                   <label className="flex items-center gap-2 text-sm text-white cursor-pointer select-none">
+                     <input 
+                        type="checkbox" 
+                        checked={activeChannels.includes('WHATSAPP')}
+                        onChange={() => toggleChannel('WHATSAPP')}
+                        className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-energy-600 focus:ring-energy-500"
+                     />
                      <MessageCircle className="h-4 w-4 text-[#25D366]" />
                      WhatsApp
                    </label>
@@ -176,7 +173,7 @@ export const DailyAutomation: React.FC<DailyAutomationProps> = ({
                  <button 
                   type="button" 
                   onClick={testWhatsApp} 
-                  className="px-2 py-1 bg-[#25D366]/10 hover:bg-[#25D366]/20 text-[#25D366] rounded text-xs flex items-center gap-1 transition-colors border border-[#25D366]/20"
+                  className="px-3 py-1 bg-[#25D366]/10 hover:bg-[#25D366]/20 text-[#25D366] rounded text-xs flex items-center gap-1 transition-colors border border-[#25D366]/20 font-medium"
                 >
                    <Send className="h-3 w-3" /> Test
                  </button>
@@ -196,14 +193,13 @@ export const DailyAutomation: React.FC<DailyAutomationProps> = ({
             <div className="space-y-2">
                <div className="flex items-center justify-between">
                  <div className="flex items-center gap-2">
-                   <input 
-                      type="checkbox" 
-                      id="use-email"
-                      checked={activeChannels.includes('EMAIL')}
-                      onChange={() => toggleChannel('EMAIL')}
-                      className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-energy-600 focus:ring-energy-500 cursor-pointer"
-                   />
-                   <label htmlFor="use-email" className="flex items-center gap-2 text-sm text-white cursor-pointer select-none">
+                   <label className="flex items-center gap-2 text-sm text-white cursor-pointer select-none">
+                     <input 
+                        type="checkbox" 
+                        checked={activeChannels.includes('EMAIL')}
+                        onChange={() => toggleChannel('EMAIL')}
+                        className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-energy-600 focus:ring-energy-500"
+                     />
                      <Mail className="h-4 w-4 text-sky-400" />
                      Email Client
                    </label>
@@ -211,7 +207,7 @@ export const DailyAutomation: React.FC<DailyAutomationProps> = ({
                  <button 
                   type="button" 
                   onClick={testEmail}
-                  className="px-2 py-1 bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 rounded text-xs flex items-center gap-1 transition-colors border border-sky-500/20"
+                  className="px-3 py-1 bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 rounded text-xs flex items-center gap-1 transition-colors border border-sky-500/20 font-medium"
                  >
                    <Send className="h-3 w-3" /> Test
                  </button>
@@ -226,10 +222,8 @@ export const DailyAutomation: React.FC<DailyAutomationProps> = ({
             </div>
           </div>
 
-          {/* Schedule Section */}
           <div className="p-4 bg-slate-950 border border-slate-800 rounded-lg space-y-4">
              <div className="flex items-center gap-3">
-                {/* Fixed: Changed div to label for proper click handling */}
                 <label className="relative inline-flex items-center cursor-pointer">
                   <input 
                     type="checkbox" 
@@ -257,7 +251,10 @@ export const DailyAutomation: React.FC<DailyAutomationProps> = ({
                   />
                 </div>
                 {activeChannels.length === 0 && (
-                   <p className="text-xs text-red-400">Please select at least one notification channel above.</p>
+                   <p className="text-xs text-red-400 flex items-center gap-1">
+                     <AlertTriangle className="h-3 w-3" /> 
+                     Select at least one channel above.
+                   </p>
                 )}
               </div>
             )}

@@ -1,37 +1,9 @@
 import { GoogleGenAI } from "@google/genai";
-import { SearchSource, EmailDraft, UserProfile } from "../types";
+import { SearchSource, EmailDraft } from "../types";
 
 // Helper to initialize the client safely
 const getAiClient = () => {
-  let apiKey = '';
-
-  // 1. Try to get the user's custom API key from LocalStorage
-  if (typeof window !== 'undefined') {
-    try {
-      const storedProfile = localStorage.getItem('energyScout_userProfile');
-      if (storedProfile) {
-        const profile = JSON.parse(storedProfile) as UserProfile;
-        if (profile.apiKey) {
-          apiKey = profile.apiKey;
-        }
-      }
-    } catch (e) {
-      console.warn("Failed to read user profile for API key", e);
-    }
-  }
-
-  // 2. Fallback to process.env if no user key is found
-  if (!apiKey && typeof process !== 'undefined' && process.env) {
-    apiKey = process.env.API_KEY || '';
-  }
-  
-  if (!apiKey) {
-    console.warn("EnergyScout: API_KEY is missing. Please sign up with your key or configure environment variables.");
-    // We return an empty client, but calls will fail. 
-    // The UI should handle the error when the call is actually made.
-  }
-  
-  return new GoogleGenAI({ apiKey: apiKey });
+  return new GoogleGenAI({ apiKey: process.env.API_KEY });
 };
 
 /**
