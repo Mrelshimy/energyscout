@@ -1,13 +1,34 @@
 import { GoogleGenAI } from "@google/genai";
-import { SearchSource, EmailDraft } from "../types";
+import { SearchSource, EmailDraft, UserProfile } from "../types";
 
 // Helper to initialize the client safely
 const getAiClient = () => {
-  // Check if process is defined to avoid ReferenceError in browser environments
-  const apiKey = (typeof process !== 'undefined' && process.env) ? process.env.API_KEY : '';
+  let apiKey = '';
+
+  // 1. Try to get the user's custom API key from LocalStorage
+  if (typeof window !== 'undefined') {
+    try {
+      const storedProfile = localStorage.getItem('energyScout_userProfile');
+      if (storedProfile) {
+        const profile = JSON.parse(storedProfile) as UserProfile;
+        if (profile.apiKey) {
+          apiKey = profile.apiKey;
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to read user profile for API key", e);
+    }
+  }
+
+  // 2. Fallback to process.env if no user key is found
+  if (!apiKey && typeof process !== 'undefined' && process.env) {
+    apiKey = process.env.API_KEY || '';
+  }
   
   if (!apiKey) {
-    console.warn("EnergyScout: API_KEY is missing from process.env. Please configure your environment variables.");
+    console.warn("EnergyScout: API_KEY is missing. Please sign up with your key or configure environment variables.");
+    // We return an empty client, but calls will fail. 
+    // The UI should handle the error when the call is actually made.
   }
   
   return new GoogleGenAI({ apiKey: apiKey });
@@ -74,7 +95,7 @@ export const searchEnergyNews = async (topic: string): Promise<{ text: string; s
 
   } catch (error) {
     console.error("Error fetching news:", error);
-    throw new Error("Failed to fetch news. Please check your API key and try again.");
+    throw new Error("Failed to fetch news. Please check your API Key in Settings.");
   }
 };
 

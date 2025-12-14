@@ -22,11 +22,17 @@ export interface EmailDraft {
   body: string;
 }
 
+export interface UserProfile {
+  name: string;
+  apiKey: string;
+}
+
 export interface DailyConfig {
   topic: string;
   phoneNumber: string;
+  emailAddress: string;
   lastRun: string | null;
   autoRun: boolean;
-  channel: 'WHATSAPP' | 'EMAIL';
+  activeChannels: ('WHATSAPP' | 'EMAIL')[];
   scheduledTime: string; // Format "HH:mm"
 }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, Play, CheckCircle, Clock, Save, Bell, Zap, Mail, MessageCircle, ExternalLink } from 'lucide-react';
+import { Settings, Play, CheckCircle, Clock, Save, Bell, Zap, Mail, MessageCircle, ExternalLink, RefreshCw, Send } from 'lucide-react';
 import { DailyConfig } from '../types';
 
 interface DailyAutomationProps {
@@ -18,9 +18,15 @@ export const DailyAutomation: React.FC<DailyAutomationProps> = ({
   const [isEditing, setIsEditing] = useState(!config);
   const [topic, setTopic] = useState(config?.topic || '');
   const [phone, setPhone] = useState(config?.phoneNumber || '');
+  const [email, setEmail] = useState(config?.emailAddress || '');
   const [autoRun, setAutoRun] = useState(config?.autoRun || false);
   const [scheduledTime, setScheduledTime] = useState(config?.scheduledTime || '09:00');
-  const [channel, setChannel] = useState<'WHATSAPP' | 'EMAIL'>(config?.channel || 'EMAIL');
+  
+  // Initialize active channels. Default to Email if nothing set.
+  const [activeChannels, setActiveChannels] = useState<('WHATSAPP' | 'EMAIL')[]>(
+    config?.activeChannels || ['EMAIL']
+  );
+  
   const [nextRunText, setNextRunText] = useState('');
 
   // Update countdown text
@@ -61,9 +67,10 @@ export const DailyAutomation: React.FC<DailyAutomationProps> = ({
     onSaveConfig({
       topic,
       phoneNumber: phone,
+      emailAddress: email,
       lastRun: config?.lastRun || null,
       autoRun,
-      channel,
+      activeChannels,
       scheduledTime
     });
     setIsEditing(false);
@@ -77,14 +84,31 @@ export const DailyAutomation: React.FC<DailyAutomationProps> = ({
     return last.getDate() !== now.getDate() || last.getMonth() !== now.getMonth();
   };
 
-  const testPopup = () => {
-    const win = window.open('', '_blank', 'width=100,height=100');
-    if (win) {
-      win.close();
-      alert("Success! Popups are allowed.");
+  const toggleChannel = (channel: 'WHATSAPP' | 'EMAIL') => {
+    if (activeChannels.includes(channel)) {
+      setActiveChannels(activeChannels.filter(c => c !== channel));
     } else {
-      alert("Popup blocked! Please allow popups for this site so automation can work.");
+      setActiveChannels([...activeChannels, channel]);
     }
+  };
+
+  // Test Functions
+  const testWhatsApp = () => {
+    if (!phone) {
+      alert("Please enter a phone number first.");
+      return;
+    }
+    const cleanNumber = phone.replace(/[^0-9]/g, '');
+    window.open(`https://wa.me/${cleanNumber}?text=${encodeURIComponent("Test message from EnergyScout. Configuration working!")}`, '_blank');
+  };
+
+  const testEmail = () => {
+    const subject = encodeURIComponent("EnergyScout Configuration Test");
+    const body = encodeURIComponent("If you are reading this, your email configuration link is working properly.");
+    // If email is provided, we can try to pre-fill the 'to' field in mailto if the client supports it, 
+    // but usually mailto just opens the client. We can try `mailto:email?`
+    const mailto = email ? `mailto:${email}?subject=${subject}&body=${body}` : `mailto:?subject=${subject}&body=${body}`;
+    window.location.href = mailto;
   };
 
   if (isEditing) {
@@ -94,7 +118,9 @@ export const DailyAutomation: React.FC<DailyAutomationProps> = ({
           <Settings className="h-5 w-5" />
           <h2 className="font-semibold text-white">Automation Configuration</h2>
         </div>
-        <form onSubmit={handleSave} className="space-y-5">
+        <form onSubmit={handleSave} className="space-y-6">
+          
+          {/* Topic Section */}
           <div>
             <label className="block text-sm text-slate-400 mb-1">Daily Search Topic</label>
             <input
@@ -108,39 +134,80 @@ export const DailyAutomation: React.FC<DailyAutomationProps> = ({
             />
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Preferred Channel</label>
-              <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-700">
-                <button
-                  type="button"
-                  onClick={() => setChannel('EMAIL')}
-                  className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-sm font-medium transition-all ${channel === 'EMAIL' ? 'bg-slate-800 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}
-                >
-                  <Mail className="h-4 w-4" /> Email
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setChannel('WHATSAPP')}
-                  className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-sm font-medium transition-all ${channel === 'WHATSAPP' ? 'bg-[#25D366]/20 text-[#25D366] shadow' : 'text-slate-400 hover:text-slate-200'}`}
-                >
-                  <MessageCircle className="h-4 w-4" /> WhatsApp
-                </button>
-              </div>
-            </div>
+          {/* Notification Channels Section */}
+          <div className="bg-slate-950 rounded-xl p-4 border border-slate-800 space-y-4">
+            <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">Notification Channels</h3>
             
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Recipient Number (Optional for Email)</label>
-              <input
+            {/* WhatsApp Config */}
+            <div className="space-y-2">
+               <div className="flex items-center justify-between">
+                 <div className="flex items-center gap-2">
+                   <input 
+                      type="checkbox" 
+                      id="use-wa"
+                      checked={activeChannels.includes('WHATSAPP')}
+                      onChange={() => toggleChannel('WHATSAPP')}
+                      className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-energy-600 focus:ring-energy-500"
+                   />
+                   <label htmlFor="use-wa" className="flex items-center gap-2 text-sm text-white cursor-pointer select-none">
+                     <MessageCircle className="h-4 w-4 text-[#25D366]" />
+                     WhatsApp
+                   </label>
+                 </div>
+                 <button 
+                  type="button" 
+                  onClick={testWhatsApp} 
+                  className="text-xs flex items-center gap-1 text-[#25D366] hover:underline opacity-80 hover:opacity-100"
+                >
+                   <Send className="h-3 w-3" /> Test
+                 </button>
+               </div>
+               <input
                 type="text"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
-                placeholder="201xxxxxxxxx"
-                className="w-full bg-slate-950 border border-slate-700 text-white rounded-lg px-4 py-2 focus:border-energy-500 outline-none"
+                placeholder="Number (e.g., 201xxxxxxxxx)"
+                className={`w-full bg-slate-900 border ${activeChannels.includes('WHATSAPP') && !phone ? 'border-red-500/50' : 'border-slate-700'} text-white rounded-lg px-4 py-2 text-sm focus:border-energy-500 outline-none transition-colors`}
+              />
+            </div>
+
+            <div className="h-px bg-slate-800 my-2"></div>
+
+            {/* Email Config */}
+            <div className="space-y-2">
+               <div className="flex items-center justify-between">
+                 <div className="flex items-center gap-2">
+                   <input 
+                      type="checkbox" 
+                      id="use-email"
+                      checked={activeChannels.includes('EMAIL')}
+                      onChange={() => toggleChannel('EMAIL')}
+                      className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-energy-600 focus:ring-energy-500"
+                   />
+                   <label htmlFor="use-email" className="flex items-center gap-2 text-sm text-white cursor-pointer select-none">
+                     <Mail className="h-4 w-4 text-sky-400" />
+                     Email Client
+                   </label>
+                 </div>
+                 <button 
+                  type="button" 
+                  onClick={testEmail}
+                  className="text-xs flex items-center gap-1 text-sky-400 hover:underline opacity-80 hover:opacity-100"
+                 >
+                   <Send className="h-3 w-3" /> Test
+                 </button>
+               </div>
+               <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Email Address (Optional recipient)"
+                className="w-full bg-slate-900 border border-slate-700 text-white rounded-lg px-4 py-2 text-sm focus:border-energy-500 outline-none"
               />
             </div>
           </div>
 
+          {/* Schedule Section */}
           <div className="p-4 bg-slate-950 border border-slate-800 rounded-lg space-y-4">
              <div className="flex items-center gap-3">
                 <div className="relative inline-flex items-center cursor-pointer">
@@ -153,8 +220,8 @@ export const DailyAutomation: React.FC<DailyAutomationProps> = ({
                   <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-energy-600"></div>
                 </div>
                 <div>
-                  <span className="text-sm font-medium text-white block">Enable Scheduled Dashboard</span>
-                  <span className="text-xs text-slate-400 block">App will run automatically at the time below.</span>
+                  <span className="text-sm font-medium text-white block">Enable Scheduled Automation</span>
+                  <span className="text-xs text-slate-400 block">App will check for news automatically.</span>
                 </div>
             </div>
 
@@ -169,15 +236,9 @@ export const DailyAutomation: React.FC<DailyAutomationProps> = ({
                     className="bg-slate-900 border border-slate-700 text-white rounded px-3 py-1 text-sm focus:border-energy-500 outline-none"
                   />
                 </div>
-                <div className="text-xs text-amber-500/80 bg-amber-500/10 p-2 rounded flex gap-2">
-                  <ExternalLink className="h-4 w-4 flex-shrink-0" />
-                  <p>
-                    Important: You must allow popups for this site for automation to open WhatsApp/Email without clicking.
-                    <button onClick={testPopup} className="underline ml-1 hover:text-amber-400 font-bold">
-                       Test Permissions
-                    </button>
-                  </p>
-                </div>
+                {activeChannels.length === 0 && (
+                   <p className="text-xs text-red-400">Please select at least one notification channel above.</p>
+                )}
               </div>
             )}
           </div>
@@ -246,9 +307,18 @@ export const DailyAutomation: React.FC<DailyAutomationProps> = ({
               </span>
             )}
             <span className="text-slate-600">•</span>
-            <span className="flex items-center gap-1 text-slate-400">
-               via {config?.channel === 'EMAIL' ? <Mail className="h-3 w-3"/> : <MessageCircle className="h-3 w-3"/>}
-            </span>
+            <div className="flex gap-2">
+              {config?.activeChannels.includes('EMAIL') && (
+                 <span className="flex items-center gap-1 text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full">
+                   <Mail className="h-3 w-3"/> Email
+                 </span>
+              )}
+              {config?.activeChannels.includes('WHATSAPP') && (
+                 <span className="flex items-center gap-1 text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full">
+                   <MessageCircle className="h-3 w-3"/> WA
+                 </span>
+              )}
+            </div>
           </div>
         </div>
 

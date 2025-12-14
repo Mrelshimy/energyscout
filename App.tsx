@@ -4,9 +4,10 @@ import { SearchControls } from './components/SearchControls';
 import { ResultsFeed } from './components/ResultsFeed';
 import { EmailModal } from './components/EmailModal';
 import { DailyAutomation } from './components/DailyAutomation';
+import { UserProfileSetup } from './components/UserProfileSetup';
 import { searchEnergyNews, generateEmailNewsletter } from './services/geminiService';
-import { NewsReport, AppStatus, EmailDraft, DailyConfig } from './types';
-import { AlertCircle, Loader2 } from 'lucide-react';
+import { NewsReport, AppStatus, EmailDraft, DailyConfig, UserProfile } from './types';
+import { AlertCircle, Loader2, UserCircle } from 'lucide-react';
 
 const App: React.FC = () => {
   const [status, setStatus] = useState<AppStatus>(AppStatus.IDLE);
@@ -16,23 +17,54 @@ const App: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [dailyConfig, setDailyConfig] = useState<DailyConfig | null>(null);
   
+  // User Profile State
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [isProfileSetupOpen, setIsProfileSetupOpen] = useState(false);
+
   // Track if we are currently running an automation sequence
   const [isAutoRunning, setIsAutoRunning] = useState(false);
   // Ref to prevent double-firing in strict mode or rapid updates
   const isProcessingRef = useRef(false);
 
-  // Load config from local storage on mount
+  // Load config and profile from local storage on mount
   useEffect(() => {
+    // Load Profile
+    const savedProfile = localStorage.getItem('energyScout_userProfile');
+    if (savedProfile) {
+      try {
+        setUserProfile(JSON.parse(savedProfile));
+      } catch (e) {
+        console.error("Failed to parse user profile", e);
+        setIsProfileSetupOpen(true);
+      }
+    } else {
+      // No profile, force setup
+      setIsProfileSetupOpen(true);
+    }
+
+    // Load Automation Config
     const savedConfig = localStorage.getItem('energyScout_dailyConfig');
     if (savedConfig) {
       try {
         const config = JSON.parse(savedConfig) as DailyConfig;
+        // Migration check for older config structure
+        if (!config.activeChannels) {
+           config.activeChannels = ['EMAIL'];
+        }
         setDailyConfig(config);
       } catch (e) {
         console.error("Failed to parse daily config", e);
       }
     }
   }, []);
+
+  const handleProfileSave = (profile: UserProfile) => {
+    localStorage.setItem('energyScout_userProfile', JSON.stringify(profile));
+    setUserProfile(profile);
+    setIsProfileSetupOpen(false);
+    // Refresh page to ensure services pick up new key if needed
+    window.location.reload(); 
+  };
 
   // SCHEDULER: Check time every 30 seconds
   useEffect(() => {
@@ -98,17 +130,25 @@ const App: React.FC = () => {
       setReport(newReport);
       setStatus(AppStatus.COMPLETE);
 
-      // If this was an automated run, immediately trigger the preferred channel action
+      // Automated Execution
       if (isAutomated && dailyConfig) {
-         if (dailyConfig.channel === 'WHATSAPP') {
-           // Wait a brief moment for UI to settle
-           setTimeout(() => {
-             triggerWhatsAppShare(newReport, dailyConfig.phoneNumber);
-             updateLastRun();
-           }, 1000);
-         } else {
-           triggerEmailDrafting(newReport.rawText, true);
+         // Execute all active channels
+         const channels = dailyConfig.activeChannels || [];
+         
+         if (channels.includes('WHATSAPP')) {
+             setTimeout(() => {
+               triggerWhatsAppShare(newReport, dailyConfig.phoneNumber);
+             }, 1000);
          }
+         
+         if (channels.includes('EMAIL')) {
+           // If Email is active, we trigger drafting. 
+           // Note: browser might only allow opening one window (for WA or Email), 
+           // but we try our best.
+            triggerEmailDrafting(newReport.rawText, true);
+         }
+         
+         updateLastRun();
       } else {
         // Reset manual processing flag if manual search finishes
         isProcessingRef.current = false;
@@ -124,7 +164,7 @@ const App: React.FC = () => {
   };
 
   const triggerWhatsAppShare = (reportData: NewsReport, phone: string) => {
-    const cleanNumber = phone.replace(/[^0-9]/g, '');
+    const cleanNumber = phone ? phone.replace(/[^0-9]/g, '') : '';
     const sourceList = reportData.sources.map(s => `• ${s.title}: ${s.uri}`).join('\n');
     const message = `*EnergyScout Update - Sources:*\n\n${sourceList}`;
     const encodedMessage = encodeURIComponent(message);
@@ -135,7 +175,7 @@ const App: React.FC = () => {
     // Attempt to open. Note: Browsers might block this if not user-initiated.
     const win = window.open(url, '_blank');
     if (!win) {
-      setErrorMsg("Auto-open blocked by browser. Please allow popups for EnergyScout.");
+      console.warn("Auto-open blocked by browser.");
     }
   };
 
@@ -150,8 +190,8 @@ const App: React.FC = () => {
       if (isAutomated) {
         const subject = encodeURIComponent(draft.subject);
         const body = encodeURIComponent(draft.body);
-        window.location.href = `mailto:?subject=${subject}&body=${body}`;
-        updateLastRun();
+        const recipient = dailyConfig?.emailAddress ? dailyConfig.emailAddress : '';
+        window.location.href = `mailto:${recipient}?subject=${subject}&body=${body}`;
       }
     } catch (err: any) {
       console.error(err);
@@ -164,6 +204,27 @@ const App: React.FC = () => {
 
   return (
     <Layout>
+      {/* Profile Button / Header Action (optional, but good for UX) */}
+      <div className="absolute top-4 right-4 z-50">
+        <button 
+          onClick={() => setIsProfileSetupOpen(true)}
+          className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors"
+        >
+          <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center border border-slate-700">
+             <UserCircle className="h-5 w-5" />
+          </div>
+          <span className="text-sm font-medium hidden sm:inline">{userProfile?.name || 'Guest'}</span>
+        </button>
+      </div>
+
+      {isProfileSetupOpen && (
+        <UserProfileSetup 
+          onComplete={handleProfileSave} 
+          existingProfile={userProfile}
+          onCancel={userProfile ? () => setIsProfileSetupOpen(false) : undefined}
+        />
+      )}
+
       <DailyAutomation 
         config={dailyConfig} 
         onSaveConfig={saveDailyConfig} 
