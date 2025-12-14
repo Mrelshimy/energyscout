@@ -32,6 +32,14 @@
         }
       }
     </script>
+    <script>
+      // Polyfill for process.env to prevent crashes in browser environments
+      window.process = {
+        env: {
+          NODE_ENV: 'development'
+        }
+      };
+    </script>
     <style>
       body {
         background-color: #0f172a;
@@ -67,5 +75,6 @@
 </head>
   <body>
     <div id="root"></div>
+    <script type="module" src="./index.tsx"></script>
   </body>
 </html>

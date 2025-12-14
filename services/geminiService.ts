@@ -1,4 +1,4 @@
-import { GoogleGenAI, Tool } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 import { SearchSource, EmailDraft } from "../types";
 
 // Helper to initialize the client safely
