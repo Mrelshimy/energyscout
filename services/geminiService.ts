@@ -1,13 +1,23 @@
 import { GoogleGenAI, Tool } from "@google/genai";
 import { SearchSource, EmailDraft } from "../types";
 
-// Initialize the API client
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Helper to initialize the client safely
+const getAiClient = () => {
+  // Check if process is defined to avoid ReferenceError in browser environments
+  const apiKey = (typeof process !== 'undefined' && process.env) ? process.env.API_KEY : '';
+  
+  if (!apiKey) {
+    console.warn("EnergyScout: API_KEY is missing from process.env. Please configure your environment variables.");
+  }
+  
+  return new GoogleGenAI({ apiKey: apiKey });
+};
 
 /**
  * Searches for news using Gemini with Google Search grounding.
  */
 export const searchEnergyNews = async (topic: string): Promise<{ text: string; sources: SearchSource[] }> => {
+  const ai = getAiClient();
   const model = 'gemini-2.5-flash';
   
   const prompt = `
@@ -72,6 +82,7 @@ export const searchEnergyNews = async (topic: string): Promise<{ text: string; s
  * Generates an email draft based on the found news.
  */
 export const generateEmailNewsletter = async (newsText: string): Promise<EmailDraft> => {
+  const ai = getAiClient();
   const model = 'gemini-2.5-flash';
   
   const prompt = `
