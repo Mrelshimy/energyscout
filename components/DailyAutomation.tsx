@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, Play, CheckCircle, Clock, Save, Bell, Zap, Mail, MessageCircle, ExternalLink, RefreshCw, Send } from 'lucide-react';
+import { Settings, Play, CheckCircle, Clock, Save, Bell, Zap, Mail, MessageCircle, Send } from 'lucide-react';
 import { DailyConfig } from '../types';
 
 interface DailyAutomationProps {
@@ -93,21 +93,40 @@ export const DailyAutomation: React.FC<DailyAutomationProps> = ({
   };
 
   // Test Functions
-  const testWhatsApp = () => {
+  const testWhatsApp = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
     if (!phone) {
-      alert("Please enter a phone number first.");
+      alert("Please enter a phone number first to test WhatsApp integration.");
       return;
     }
+    
     const cleanNumber = phone.replace(/[^0-9]/g, '');
-    window.open(`https://wa.me/${cleanNumber}?text=${encodeURIComponent("Test message from EnergyScout. Configuration working!")}`, '_blank');
+    if (cleanNumber.length < 5) {
+      alert("Please enter a valid phone number with country code.");
+      return;
+    }
+
+    const url = `https://wa.me/${cleanNumber}?text=${encodeURIComponent("Test message from EnergyScout. Configuration working!")}`;
+    window.open(url, '_blank');
   };
 
-  const testEmail = () => {
+  const testEmail = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!email && activeChannels.includes('EMAIL')) {
+        const confirmEmpty = window.confirm("You haven't entered an email address. This will open your default mail client with a blank recipient. Continue?");
+        if (!confirmEmpty) return;
+    }
+
     const subject = encodeURIComponent("EnergyScout Configuration Test");
     const body = encodeURIComponent("If you are reading this, your email configuration link is working properly.");
-    // If email is provided, we can try to pre-fill the 'to' field in mailto if the client supports it, 
-    // but usually mailto just opens the client. We can try `mailto:email?`
     const mailto = email ? `mailto:${email}?subject=${subject}&body=${body}` : `mailto:?subject=${subject}&body=${body}`;
+    
+    // Use window.open for mailto to avoid navigating away from the app state if possible, 
+    // though mailto usually behaves well.
     window.location.href = mailto;
   };
 
@@ -147,7 +166,7 @@ export const DailyAutomation: React.FC<DailyAutomationProps> = ({
                       id="use-wa"
                       checked={activeChannels.includes('WHATSAPP')}
                       onChange={() => toggleChannel('WHATSAPP')}
-                      className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-energy-600 focus:ring-energy-500"
+                      className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-energy-600 focus:ring-energy-500 cursor-pointer"
                    />
                    <label htmlFor="use-wa" className="flex items-center gap-2 text-sm text-white cursor-pointer select-none">
                      <MessageCircle className="h-4 w-4 text-[#25D366]" />
@@ -157,7 +176,7 @@ export const DailyAutomation: React.FC<DailyAutomationProps> = ({
                  <button 
                   type="button" 
                   onClick={testWhatsApp} 
-                  className="text-xs flex items-center gap-1 text-[#25D366] hover:underline opacity-80 hover:opacity-100"
+                  className="px-2 py-1 bg-[#25D366]/10 hover:bg-[#25D366]/20 text-[#25D366] rounded text-xs flex items-center gap-1 transition-colors border border-[#25D366]/20"
                 >
                    <Send className="h-3 w-3" /> Test
                  </button>
@@ -182,7 +201,7 @@ export const DailyAutomation: React.FC<DailyAutomationProps> = ({
                       id="use-email"
                       checked={activeChannels.includes('EMAIL')}
                       onChange={() => toggleChannel('EMAIL')}
-                      className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-energy-600 focus:ring-energy-500"
+                      className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-energy-600 focus:ring-energy-500 cursor-pointer"
                    />
                    <label htmlFor="use-email" className="flex items-center gap-2 text-sm text-white cursor-pointer select-none">
                      <Mail className="h-4 w-4 text-sky-400" />
@@ -192,7 +211,7 @@ export const DailyAutomation: React.FC<DailyAutomationProps> = ({
                  <button 
                   type="button" 
                   onClick={testEmail}
-                  className="text-xs flex items-center gap-1 text-sky-400 hover:underline opacity-80 hover:opacity-100"
+                  className="px-2 py-1 bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 rounded text-xs flex items-center gap-1 transition-colors border border-sky-500/20"
                  >
                    <Send className="h-3 w-3" /> Test
                  </button>
@@ -210,7 +229,8 @@ export const DailyAutomation: React.FC<DailyAutomationProps> = ({
           {/* Schedule Section */}
           <div className="p-4 bg-slate-950 border border-slate-800 rounded-lg space-y-4">
              <div className="flex items-center gap-3">
-                <div className="relative inline-flex items-center cursor-pointer">
+                {/* Fixed: Changed div to label for proper click handling */}
+                <label className="relative inline-flex items-center cursor-pointer">
                   <input 
                     type="checkbox" 
                     checked={autoRun} 
@@ -218,7 +238,7 @@ export const DailyAutomation: React.FC<DailyAutomationProps> = ({
                     className="sr-only peer" 
                   />
                   <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-energy-600"></div>
-                </div>
+                </label>
                 <div>
                   <span className="text-sm font-medium text-white block">Enable Scheduled Automation</span>
                   <span className="text-xs text-slate-400 block">App will check for news automatically.</span>
